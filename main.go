@@ -18,7 +18,7 @@ package main
 
 import (
 	"flag"
-	certmanager "github.com/jetstack/cert-manager/pkg/apis/certmanager/v1"
+	certmanager "github.com/jetstack/cert-manager/pkg/apis/certmanager/v1alpha3"
 	"os"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
