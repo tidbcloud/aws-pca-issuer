@@ -26,7 +26,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/acmpca"
-	cmapi "github.com/jetstack/cert-manager/pkg/apis/certmanager/v1"
+	cmapi "github.com/jetstack/cert-manager/pkg/apis/certmanager/v1alpha3"
 	"k8s.io/apimachinery/pkg/types"
 	"sync"
 )
@@ -66,7 +66,7 @@ func NewProvisioner(session *session.Session, arn string) (p *PCAProvisioner) {
 func (p *PCAProvisioner) Sign(ctx context.Context, cr *cmapi.CertificateRequest) ([]byte, []byte, error) {
 	svc := acmpca.New(p.session, &aws.Config{})
 
-	block, _ := pem.Decode(cr.Spec.Request)
+	block, _ := pem.Decode(cr.Spec.CSRPEM)
 	if block == nil {
 		return nil, nil, fmt.Errorf("failed to decode CSR")
 	}
@@ -89,7 +89,7 @@ func (p *PCAProvisioner) Sign(ctx context.Context, cr *cmapi.CertificateRequest)
 	issueParams := acmpca.IssueCertificateInput{
 		CertificateAuthorityArn: aws.String(p.arn),
 		SigningAlgorithm:        aws.String(sigAlgorithm),
-		Csr:                     cr.Spec.Request,
+		Csr:                     cr.Spec.CSRPEM,
 		Validity: &acmpca.Validity{
 			Type:  aws.String(acmpca.ValidityPeriodTypeDays),
 			Value: aws.Int64(validityDays),

@@ -19,10 +19,11 @@ package controllers
 import (
 	"context"
 	"fmt"
-	cmapi "github.com/jetstack/cert-manager/pkg/apis/certmanager/v1"
+	cmapi "github.com/jetstack/cert-manager/pkg/apis/certmanager/v1alpha3"
 	"github.com/jniebuhr/aws-pca-issuer/pkg/aws"
 	"github.com/jniebuhr/aws-pca-issuer/pkg/util"
 	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
@@ -141,7 +142,7 @@ func isReady(issuer api.GenericIssuer) bool {
 
 func (r *CertificateRequestReconciler) setStatus(ctx context.Context, cr *cmapi.CertificateRequest, status cmmeta.ConditionStatus, reason, message string, args ...interface{}) error {
 	completeMessage := fmt.Sprintf(message, args...)
-	cmutil.SetCertificateRequestCondition(cr, "Ready", status, reason, completeMessage)
+	SetCertificateRequestCondition(cr, "Ready", status, reason, completeMessage, r.Log)
 
 	eventType := core.EventTypeNormal
 	if status == cmmeta.ConditionFalse {
@@ -150,4 +151,41 @@ func (r *CertificateRequestReconciler) setStatus(ctx context.Context, cr *cmapi.
 	r.Recorder.Event(cr, eventType, reason, completeMessage)
 
 	return r.Client.Status().Update(ctx, cr)
+}
+
+func SetCertificateRequestCondition(cr *cmapi.CertificateRequest, conditionType cmapi.CertificateRequestConditionType, status cmmeta.ConditionStatus, reason, message string, log logr.Logger) {
+	newCondition := cmapi.CertificateRequestCondition{
+		Type:    conditionType,
+		Status:  status,
+		Reason:  reason,
+		Message: message,
+	}
+
+	nowTime := metav1.NewTime(cmutil.Clock.Now())
+	newCondition.LastTransitionTime = &nowTime
+
+	// Search through existing conditions
+	for idx, cond := range cr.Status.Conditions {
+		// Skip unrelated conditions
+		if cond.Type != conditionType {
+			continue
+		}
+
+		// If this update doesn't contain a state transition, we don't update
+		// the conditions LastTransitionTime to Now()
+		if cond.Status == status {
+			newCondition.LastTransitionTime = cond.LastTransitionTime
+		} else {
+			log.V(4).Info("Found status change for CertificateRequest %q condition %q: %q -> %q; setting lastTransitionTime to %v", cr.Name, conditionType, cond.Status, status, nowTime.Time)
+		}
+
+		// Overwrite the existing condition
+		cr.Status.Conditions[idx] = newCondition
+		return
+	}
+
+	// If we've not found an existing condition of this type, we simply insert
+	// the new condition into the slice.
+	cr.Status.Conditions = append(cr.Status.Conditions, newCondition)
+	log.V(4).Info("Setting lastTransitionTime for CertificateRequest %q condition %q to %v", cr.Name, conditionType, nowTime.Time)
 }
